@@ -1,0 +1,17 @@
+# Dependency folders (ဒါတွေက အရမ်းများလို့ GitHub ပေါ်မတင်ရပါ)
+node_modules/
+
+# Environment variables (သင့်ရဲ့ Database password နဲ့ secret key များ)
+.env
+
+# OS cache files
+.DS_Store
+Thumbs.db
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Uploaded images (စမ်းသပ်ထားတဲ့ ပုံဟောင်းတွေ မပါသွားစေဖို့ - optional)
+public/uploads/prod-*

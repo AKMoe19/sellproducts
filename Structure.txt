@@ -1,0 +1,18 @@
+pos-system/
+├── models/
+│   └── Product.js       # MongoDB Schema
+├── public/
+│   └── js/
+│       └── pos.js       # Frontend Socket & Cart Logic
+├── views/
+│   ├── partials/
+│   │   ├── header.ejs   # Bootstrap Links
+│   │   └── footer.ejs   # Scripts
+│   └── index.ejs        # POS Main Interface
+├── .env                 # Database URL & Port
+├── app.js               # Server Entry Point
+└── package.json
+
+
+npm install express-session bcryptjs (Password)
+npm install multer (Photo Upload)

@@ -1,0 +1,342 @@
+<%- include('partials/header') %>
+
+<nav class="navbar navbar-dark bg-info shadow-sm mb-4">
+    <div class="container-fluid">
+        <span class="navbar-brand fw-bold text-dark">
+            <i class="fas fa-chart-line me-2"></i> Sales Analytics
+        </span>
+        <a href="/" class="btn btn-dark btn-sm shadow-sm">
+            <i class="fas fa-home me-1"></i> POS Home
+        </a>
+    </div>
+</nav>
+
+<div class="container-fluid px-4">
+    <div class="row g-4">
+
+        <!-- Left Side -->
+        <div class="col-md-4 col-lg-3">
+            <div class="sticky-top" style="top: 20px; z-index: 100;">
+
+                <!-- Filter Days, Months, Years -->
+                <div class="card shadow-sm border-0 mb-4">
+
+                    <!-- Filter -->
+                    <div class="card-body">
+                        <form action="/reports" method="GET" id="filterForm">
+                            <label class="fw-bold text-muted small mb-2"><i class="fas fa-calendar-alt me-1"></i> Filter & Scarch</label>
+                            <div class="d-flex gap-2">
+                                <input type="date" name="date" id="dateFilter" class="form-control form-control-sm border-info" value="<%= selectedDate %>" onchange="this.form.submit()">
+                                <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="fas fa-sync-alt"></i></a>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Search voucher with Voucher ID -->
+                    <div class="card-body">
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="voucherSearch" class="form-control border-info" placeholder="Voucher ID..." onkeypress="if(event.key === 'Enter') searchVoucher()">
+                            <button class="btn btn-info text-white" onclick="searchVoucher()"><i class="fas fa-search"></i></button>
+                        </div>
+                    </div>
+
+                </div>
+
+    
+
+                <!-- Payments -->
+                
+                <div class="card shadow-sm border-0 mb-4">
+                    
+                    <div class="card-header bg-white fw-bold fs-5 border-0 py-3">
+                        <i class="fa-solid fa-hand-holding-dollar text-primary me-2"></i>Payment Summary
+                    </div>
+
+                    <div class="card-body pt-0">
+
+                        <div class="d-grid gap-2">
+                            <% const methods = [
+                                    { key: 'Cash', label: 'Cash', bg: 'bg-success', id: 'cash-total' },
+                                    { key: 'Kpay', label: 'Kpay', bg: 'bg-primary', id: 'kpay-total' },
+                                    { key: 'WavePay', label: 'WavePay', bg: 'bg-warning text-dark', id: 'wave-total' },
+                                    { key: 'AYAPay', label: 'AYA Pay', bg: 'bg-danger', id: 'ayapay-total' },
+                                    { key: 'CBPay', label: 'CB Pay', bg: 'bg-info', id: 'cbpay-total' },
+                                    { key: 'MMQR', label: 'MMQR', bg: 'bg-dark', id: 'mmqr-total' }
+                                ];
+                            methods.forEach(m => { %>
+                                <div class="p-2 px-3 rounded <%= m.bg %> text-white shadow-sm">
+                                    <small class="text-uppercase opacity-75 fw-bold d-block" style="font-size: 9px;"><%= m.label %></small>
+                                    <h6 class="fw-bold mb-0"><span id="<%= m.id %>"><%= (paymentStats[m.key] || 0).toLocaleString() %></span> <small style="font-size: 10px;">MMK</small></h6>
+                                </div>
+                            <% }) %>
+                        </div>                           
+
+                    </div>
+
+                    <hr class="border-3 border-primary">
+
+                    <!-- Top Sellers -->
+                    <div class="card-body pt-0">
+                        <div class="card-header bg-white fw-bold py-3">
+                            <i class="fas fa-trophy text-warning me-2"></i> Top Sellers Today
+                        </div>
+                        <ul class="list-group list-group-flush" id="topSellersList">
+                            <% topSellers.slice(0, 5).forEach((seller, i) => { %>
+                                <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                                    <span class="small">
+                                        <span class="badge bg-light text-dark border me-2"><%= i+1 %></span>
+                                        <strong><%= seller.name %></strong>
+                                    </span>
+                                    <span class="text-success small fw-bold"><%= seller.total.toLocaleString() %></span>
+                                </li>
+                            <% }) %>
+                            <% if(topSellers.length === 0) { %>
+                                <li class="list-group-item text-center text-muted py-4">No records</li>
+                            <% } %>
+                        </ul>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Right Side -->
+        <div class="col-md-8 col-lg-9">
+            <!-- Display Titles -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card border-0 bg-info text-dark shadow-sm h-100"><div class="card-body py-4"><h6>Total Revenue</h6><h2 id="totalRevenueDisplay" class="fw-bold"><%= (dailySummary.totalRevenue || 0).toLocaleString() %> <small class="fs-6">MMK</small></h2></div></div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-0 bg-secondary text-white shadow-sm h-100"><div class="card-body py-4"><h6>Daily Orders</h6><h2 id="totalOrdersDisplay" class="fw-bold"><%= dailySummary.totalOrders || 0 %> <small class="fs-6">Trans</small></h2></div></div>
+                </div>
+            </div>
+
+            <!-- Display Body -->
+            <div class="card shadow-sm border-0">
+                <div class="table-responsive" style="max-height: 70vh;">
+                    <table class="table table-hover align-middle mb-0" id="salesTable">
+
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Voucher ID</th>
+                                <th>Time</th>
+                                <th style="width: 35%;">Items</th>
+                                <th>Payment</th>
+                                <th>Sold By</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <% if (sales && sales.length > 0) { sales.forEach(sale => { %>
+                                <tr>
+                                    <td class="fw-bold"><a href="javascript:void(0)" class="text-info text-decoration-none" onclick='showVoucher(<%- JSON.stringify(sale) %>)'><%= sale.voucherId %></a></td>
+                                    <td><div class="small fw-bold"><%= sale.createdAt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) %></div></td>
+                                    <td><% sale.items.forEach(item => { %><span class="badge bg-light text-dark border me-1"><%= item.name %> x<%= item.qty %></span><% }) %></td>
+                                    <td><span class="badge <%= getPaymentClass(sale.paymentMethod) %>"><%= sale.paymentMethod %></span></td>
+                                    <td class="small"><%= sale.sellerName %></td>
+                                    <td class="text-end fw-bold"><%= sale.totalAmount.toLocaleString() %></td>
+                                </tr>
+                            <% })} else { %><tr class="no-data-row"><td colspan="6" class="text-center py-5">No records found.</td></tr><% } %>
+                        </tbody>
+
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<!-- Search Item Modal Box -->
+<div class="modal fade" id="voucherModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header bg-info text-dark">
+                <h5 class="modal-title fw-bold">Voucher Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body p-4">
+                <div>
+                    <h2 class="text-center mb-3">SMART POS SYSTEM</h2>
+                    <p class="text-center"><i class="fa-solid fa-phone-volume me-2"></i>09-7950-35-705, <i class="fa-solid fa-mobile me-2"></i>09-447-114-336 <br> NO.25, THANTHUMAR ROAD, YANGON, MYANMAR</p>
+                    <hr>
+                </div>
+
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-muted fw-bold">Voucher ID:</span>
+                    <span id="m-voucherId" class="fw-bold"></span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-muted fw-bold">Date:</span>
+                    <span id="m-date"></span>
+                </div>
+
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-muted fw-bold">Payment:</span>
+                    <span id="m-method" class="badge text-dark border border-primary"></span>
+                </div>
+
+                <hr>
+
+                <h6 class="text-primary fw-bold mb-3">Purchased Details</h6>
+                <table class="table table-sm table-borderless">
+
+                    <thead class="text-muted small">
+                        <tr>
+                            <th class="text-start">Item</th>
+                            <th class="text-center">Qty</th>
+                            <th class="text-end">Price</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="m-items">
+                    </tbody>
+
+                </table>
+
+                <hr>
+
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted small">Subtotal :</span>
+                    <span id="m-subtotal" class="small fw-bold">0</span>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted small">Discount (<span id="m-disc-percent">0</span>%) :</span>
+                    <span id="m-discount" class="small fw-bold text-danger">0</span>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted small">Tax (<span id="m-tax-percent">0</span>%) :</span>
+                    <span id="m-tax" class="small fw-bold text-primary">0</span>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-between mt-3">
+                    <h5 class="fw-bold">Total Amount:</h5>
+                    <h5 id="m-total" class="fw-bold text-info"></h5>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-info btn-sm text-white" onclick="window.print()">
+                    <i class="fas fa-print me-1"></i> Print
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    // Socket Variable Check (Identifier Error ကာကွယ်ရန်)
+    if (typeof socket === 'undefined') { var socket = io(); }
+
+    // Real-time Update
+    socket.on('reports-update', (data) => {
+        const selectedDate = document.getElementById('dateFilter').value;
+        const today = new Date().toISOString().split('T')[0];
+        if (selectedDate !== "" && selectedDate !== today) return;
+
+        const sale = data.newSale;
+        const tableBody = document.querySelector('#salesTable tbody');
+        if (tableBody.querySelector('.no-data-row')) tableBody.innerHTML = '';
+
+        const newRow = `
+            <tr class="table-success animate-in">
+                <td class="fw-bold"><a href="javascript:void(0)" class="text-info text-decoration-none" onclick='showVoucher(${JSON.stringify(sale)})'>${sale.voucherId}</a></td>
+                <td><div class="small fw-bold">${new Date(sale.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div></td>
+                <td>${sale.items.map(i => `<span class="badge bg-light text-dark border me-1">${i.name} x${i.qty}</span>`).join('')}</td>
+                <td><span class="badge ${getPaymentClassJS(sale.paymentMethod)}">${sale.paymentMethod}</span></td>
+                <td class="small">${sale.sellerName}</td>
+                <td class="text-end fw-bold">${sale.totalAmount.toLocaleString()}</td>
+            </tr>`;
+        tableBody.insertAdjacentHTML('afterbegin', newRow);
+        updateDashboardUI(sale.totalAmount, sale.paymentMethod);
+    });
+
+    // Database Search Logic
+    async function searchVoucher() {
+        const vId = document.getElementById('voucherSearch').value.trim();
+        if (!vId) return;
+        try {
+            const res = await fetch(`/api/search-voucher?vId=${vId}`);
+            const data = await res.json();
+            if (data.success) {
+                showVoucher(data.sale);
+                document.getElementById('voucherSearch').value = "";
+            } else { alert(data.message); }
+        } catch (e) { alert("ရှာဖွေမှု အဆင်မပြေပါ"); }
+    }
+
+    function showVoucher(sale) {
+        const data = typeof sale === 'string' ? JSON.parse(sale) : sale;
+
+        // အခြေခံ အချက်အလက်များ
+        document.getElementById('m-voucherId').innerText = data.voucherId;
+        document.getElementById('m-date').innerText = new Date(data.createdAt).toLocaleString();
+        document.getElementById('m-method').innerText = data.paymentMethod;
+        document.getElementById('m-total').innerText = data.totalAmount.toLocaleString() + " MMK";
+
+        // --- အသစ်ထည့်ရမည့် အပိုင်း (Subtotal, Discount, Tax) ---
+        const subtotal = data.subtotal || 0;
+        const discPercent = data.discountPercent || 0;
+        const taxPercent = data.taxPercent || 0;
+
+        // ပမာဏ တွက်ချက်ခြင်း
+        const discountAmount = subtotal * (discPercent / 100);
+        const taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
+
+        // Modal မှာ ပြသခြင်း
+        document.getElementById('m-subtotal').innerText = subtotal.toLocaleString();
+        document.getElementById('m-disc-percent').innerText = discPercent;
+        document.getElementById('m-discount').innerText = "- " + discountAmount.toLocaleString();
+        document.getElementById('m-tax-percent').innerText = taxPercent;
+        document.getElementById('m-tax').innerText = "+ " + taxAmount.toLocaleString();
+        // -------------------------------------------
+
+        // Items List
+        const itemContainer = document.getElementById('m-items');
+        itemContainer.innerHTML = ''; 
+        data.items.forEach(item => {
+            itemContainer.innerHTML += `
+                <tr>
+                    <td>${item.name}</td>
+                    <td class="text-center">x${item.qty}</td>
+                    <td class="text-end">${(item.price * item.qty).toLocaleString()}</td>
+                </tr>
+            `;
+        });
+
+        const voucherModal = new bootstrap.Modal(document.getElementById('voucherModal'));
+        voucherModal.show();
+    }
+
+    function getPaymentClassJS(m) {
+        const c = {'Cash':'bg-success','Kpay':'bg-primary','WavePay':'bg-warning text-dark','AYAPay':'bg-danger','CBPay':'bg-info','MMQR':'bg-dark'};
+        return c[m] || 'bg-secondary';
+    }
+
+    function updateDashboardUI(amount, method) {
+        const revEl = document.getElementById('totalRevenueDisplay');
+        let currentRev = parseInt(revEl.innerText.replace(/[^\d]/g, '')) || 0;
+        revEl.innerHTML = `${(currentRev + amount).toLocaleString()} <small class="fs-6">MMK</small>`;
+        
+        const map = {'Cash':'cash-total','Kpay':'kpay-total','WavePay':'wave-total','AYAPay':'ayapay-total','CBPay':'cbpay-total','MMQR':'mmqr-total'};
+        const el = document.getElementById(map[method]);
+        if (el) el.innerText = (parseInt(el.innerText.replace(/[^\d]/g, '')) + amount).toLocaleString();
+    }
+</script>
+
+<% 
+function getPaymentClass(m) {
+    const c = {'Cash':'bg-success','Kpay':'bg-primary','WavePay':'bg-warning text-dark','AYAPay':'bg-danger','CBPay':'bg-info','MMQR':'bg-dark'};
+    return c[m] || 'bg-secondary';
+}
+%>
+<%- include('partials/footer') %>

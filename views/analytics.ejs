@@ -1,0 +1,194 @@
+<%- include('partials/header') %>
+
+<style>
+    .stat-card {
+        transition: transform 0.3s;
+        border-radius: 15px;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    .icon-shape {
+        width: 48px;
+        height: 48px;
+        background-color: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+    }
+</style>
+
+<nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
+    <div class="container-fluid">
+        <span class="navbar-brand fw-bold"><i class="fas fa-chart-line me-2 text-info"></i> Business Analytics</span>
+        <a href="/admin" class="btn btn-outline-light btn-sm">Back to Admin</a>
+    </div>
+</nav>
+
+<div class="container pb-5">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h4 class="fw-bold mb-0">Sales Overview</h4>
+            <p class="text-muted small">Track your revenue and performance</p>
+        </div>
+        <div class="col-md-6 text-md-end">
+            <div class="btn-group shadow-sm">
+                <button class="btn btn-white border" onclick="updateChart('monthly')">Monthly</button>
+                <button class="btn btn-white border" onclick="updateChart('yearly')">Yearly</button>
+            </div>
+
+            <select id="yearSelect" class="form-select d-inline-block w-auto ms-2 border shadow-sm" onchange="updateChart('monthly')">
+                <% 
+                    const currentYear = new Date().getFullYear(); 
+                    const startYear = 2024; // စတင်ခဲ့တဲ့နှစ် သို့မဟုတ် စိတ်ကြိုက်နှစ်
+                    for(let y = currentYear; y >= startYear; y--) { 
+                %>
+                    <option value="<%= y %>" <%= y === currentYear ? 'selected' : '' %>><%= y %></option>
+                <% } %>
+            </select>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="stat-card card bg-primary text-white border-0 shadow">
+                <div class="card-body d-flex align-items-center">
+                    <div class="icon-shape me-3"><i class="fas fa-money-bill-wave fa-lg"></i></div>
+                    <div>
+                        <p class="mb-0 small opacity-75">Total Revenue</p>
+                        <h3 class="fw-bold mb-0" id="totalRevenue">0 <small class="fs-6">MMK</small></h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card card bg-info text-white border-0 shadow">
+                <div class="card-body d-flex align-items-center">
+                    <div class="icon-shape me-3"><i class="fas fa-shopping-cart fa-lg"></i></div>
+                    <div>
+                        <p class="mb-0 small opacity-75">Total Sales</p>
+                        <h3 class="fw-bold mb-0" id="totalSales">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card card bg-success text-white border-0 shadow">
+                <div class="card-body d-flex align-items-center">
+                    <div class="icon-shape me-3"><i class="fas fa-chart-bar fa-lg"></i></div>
+                    <div>
+                        <p class="mb-0 small opacity-75">Avg per Order</p>
+                        <h3 class="fw-bold mb-0" id="avgOrder">0 <small class="fs-6">MMK</small></h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm mb-4" style="border-radius: 15px;">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="mb-0 fw-bold text-dark">Revenue Trend</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="salesChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm mb-4" style="border-radius: 15px;">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="mb-0 fw-bold text-dark">Top Monthly Data</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 small">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Period</th>
+                                <th class="text-end">Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statsTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    let myChart;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    async function updateChart(type) {
+        const year = document.getElementById('yearSelect').value;
+        const res = await fetch(`/api/analytics?type=${type}&year=${year}`);
+        const data = await res.json();
+
+        if (data.success) {
+            const stats = data.stats;
+            const labels = type === 'monthly' ? months : stats.map(s => s._id);
+            const chartData = new Array(labels.length).fill(0);
+            
+            let totalRev = 0;
+            let totalCount = 0;
+
+            stats.forEach(s => {
+                const index = type === 'monthly' ? s._id - 1 : stats.indexOf(s);
+                chartData[index] = s.totalRevenue;
+                totalRev += s.totalRevenue;
+                totalCount += s.orderCount;
+            });
+
+            // Update Cards
+            document.getElementById('totalRevenue').innerText = totalRev.toLocaleString();
+            document.getElementById('totalSales').innerText = totalCount.toLocaleString();
+            document.getElementById('avgOrder').innerText = totalCount > 0 ? Math.round(totalRev / totalCount).toLocaleString() : 0;
+
+            // Update Table
+            const tableBody = document.getElementById('statsTableBody');
+            tableBody.innerHTML = stats.map(s => `
+                <tr>
+                    <td>${type === 'monthly' ? months[s._id-1] : s._id}</td>
+                    <td class="text-end fw-bold text-primary">${s.totalRevenue.toLocaleString()}</td>
+                </tr>
+            `).join('');
+
+            // Update Chart
+            if (myChart) myChart.destroy();
+            const ctx = document.getElementById('salesChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Revenue (MMK)',
+                        data: chartData,
+                        borderColor: '#4e54c8',
+                        backgroundColor: 'rgba(78, 84, 200, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#4e54c8'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+    }
+
+    // Initial Load
+    window.onload = () => updateChart('monthly');
+</script>
+
+<%- include('partials/footer') %>
