@@ -17,6 +17,14 @@
         justify-content: center;
         border-radius: 12px;
     }
+    /* Active Button Style */
+    .btn-group .btn.active {
+        background-color: #0d6efd !important;
+        color: white !important;
+        border-color: #0d6efd !important;
+        font-weight: bold;
+        z-index: 2;
+    }
 </style>
 
 <nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
@@ -33,15 +41,16 @@
             <p class="text-muted small">Track your revenue and performance</p>
         </div>
         <div class="col-md-6 text-md-end">
-            <div class="btn-group shadow-sm">
-                <button class="btn btn-white border" onclick="updateChart('monthly')">Monthly</button>
-                <button class="btn btn-white border" onclick="updateChart('yearly')">Yearly</button>
+            <div class="btn-group shadow-sm" id="analyticsToggle">
+                <button type="button" id="btn-daily" class="btn btn-white border" onclick="updateChart('daily')">Daily</button>
+                <button type="button" id="btn-monthly" class="btn btn-white border active" onclick="updateChart('monthly')">Monthly</button>
+                <button type="button" id="btn-yearly" class="btn btn-white border" onclick="updateChart('yearly')">Yearly</button>
             </div>
 
-            <select id="yearSelect" class="form-select d-inline-block w-auto ms-2 border shadow-sm" onchange="updateChart('monthly')">
+            <select id="yearSelect" class="form-select d-inline-block w-auto ms-2 border shadow-sm" onchange="refreshCurrentView()">
                 <% 
                     const currentYear = new Date().getFullYear(); 
-                    const startYear = 2024; // စတင်ခဲ့တဲ့နှစ် သို့မဟုတ် စိတ်ကြိုက်နှစ်
+                    const startYear = 2024; 
                     for(let y = currentYear; y >= startYear; y--) { 
                 %>
                     <option value="<%= y %>" <%= y === currentYear ? 'selected' : '' %>><%= y %></option>
@@ -90,28 +99,29 @@
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm mb-4" style="border-radius: 15px;">
                 <div class="card-header bg-white py-3 border-0">
-                    <h6 class="mb-0 fw-bold text-dark">Revenue Trend</h6>
+                    <h6 class="mb-0 fw-bold text-dark" id="chartTitle">Revenue Trend</h6>
                 </div>
                 <div class="card-body">
-                    <canvas id="salesChart" height="250"></canvas>
+                    <div style="height: 300px;">
+                        <canvas id="salesChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm mb-4" style="border-radius: 15px;">
                 <div class="card-header bg-white py-3 border-0">
-                    <h6 class="mb-0 fw-bold text-dark">Top Monthly Data</h6>
+                    <h6 class="mb-0 fw-bold text-dark" id="tableTitle">Top Data</h6>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive" style="max-height: 300px;">
                     <table class="table table-hover align-middle mb-0 small">
-                        <thead class="table-light">
+                        <thead class="table-light sticky-top">
                             <tr>
-                                <th>Period</th>
+                                <th id="periodColumnTitle">Period</th>
                                 <th class="text-end">Revenue</th>
                             </tr>
                         </thead>
-                        <tbody id="statsTableBody">
-                            </tbody>
+                        <tbody id="statsTableBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -123,24 +133,64 @@
 
 <script>
     let myChart;
+    let currentType = 'monthly';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+    function refreshCurrentView() {
+        updateChart(currentType);
+    }
+
     async function updateChart(type) {
+        currentType = type;
+        
+        // Active Button UI logic
+        document.querySelectorAll('#analyticsToggle .btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`btn-${type}`).classList.add('active');
+
         const year = document.getElementById('yearSelect').value;
         const res = await fetch(`/api/analytics?type=${type}&year=${year}`);
         const data = await res.json();
 
         if (data.success) {
             const stats = data.stats;
-            const labels = type === 'monthly' ? months : stats.map(s => s._id);
-            const chartData = new Array(labels.length).fill(0);
+            const currentMonthName = months[new Date().getMonth()];
+            
+            // Labels & Titles logic
+            let labels = [];
+            let tableHeader = "";
+            
+            if(type === 'daily') {
+                labels = stats.map(s => `${currentMonthName} ${s._id}`);
+                tableHeader = "Date";
+                document.getElementById('chartTitle').innerText = `Daily Revenue Trend (${currentMonthName})`;
+                document.getElementById('tableTitle').innerText = "Daily Breakdown";
+            } else if(type === 'monthly') {
+                labels = months;
+                tableHeader = "Month";
+                document.getElementById('chartTitle').innerText = "Monthly Revenue Trend";
+                document.getElementById('tableTitle').innerText = "Monthly Breakdown";
+            } else {
+                labels = stats.map(s => s._id);
+                tableHeader = "Year";
+                document.getElementById('chartTitle').innerText = "Yearly Revenue Trend";
+                document.getElementById('tableTitle').innerText = "Yearly Breakdown";
+            }
+
+            document.getElementById('periodColumnTitle').innerText = tableHeader;
+
+            const chartDataArray = type === 'monthly' ? new Array(12).fill(0) : new Array(stats.length).fill(0);
             
             let totalRev = 0;
             let totalCount = 0;
 
-            stats.forEach(s => {
-                const index = type === 'monthly' ? s._id - 1 : stats.indexOf(s);
-                chartData[index] = s.totalRevenue;
+            stats.forEach((s, idx) => {
+                const dataIndex = type === 'monthly' ? s._id - 1 : idx;
+                if(type === 'monthly') {
+                    chartDataArray[dataIndex] = s.totalRevenue;
+                } else {
+                    chartDataArray[idx] = s.totalRevenue;
+                    labels[idx] = type === 'daily' ? `${currentMonthName} ${s._id}` : s._id;
+                }
                 totalRev += s.totalRevenue;
                 totalCount += s.orderCount;
             });
@@ -154,12 +204,12 @@
             const tableBody = document.getElementById('statsTableBody');
             tableBody.innerHTML = stats.map(s => `
                 <tr>
-                    <td>${type === 'monthly' ? months[s._id-1] : s._id}</td>
+                    <td>${type === 'monthly' ? months[s._id-1] : (type === 'daily' ? currentMonthName + ' ' + s._id : s._id)}</td>
                     <td class="text-end fw-bold text-primary">${s.totalRevenue.toLocaleString()}</td>
                 </tr>
             `).join('');
 
-            // Update Chart
+            // Update Chart.js
             if (myChart) myChart.destroy();
             const ctx = document.getElementById('salesChart').getContext('2d');
             myChart = new Chart(ctx, {
@@ -168,26 +218,46 @@
                     labels: labels,
                     datasets: [{
                         label: 'Revenue (MMK)',
-                        data: chartData,
+                        data: chartDataArray,
                         borderColor: '#4e54c8',
                         backgroundColor: 'rgba(78, 84, 200, 0.1)',
                         fill: true,
                         tension: 0.4,
-                        pointRadius: 5,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
                         pointBackgroundColor: '#4e54c8'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true } }
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Revenue: ' + context.raw.toLocaleString() + ' MMK';
+                                }
+                            }
+                        }
+                    },
+                    scales: { 
+                        y: { 
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                                    if (value >= 1000) return (value / 1000).toFixed(0) + 'K';
+                                    return value;
+                                }
+                            }
+                        } 
+                    }
                 }
             });
         }
     }
 
-    // Initial Load
     window.onload = () => updateChart('monthly');
 </script>
 
