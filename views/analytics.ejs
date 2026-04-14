@@ -25,6 +25,10 @@
         font-weight: bold;
         z-index: 2;
     }
+    /* Sticky table header */
+    .table-responsive {
+        scrollbar-width: thin;
+    }
 </style>
 
 <nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
@@ -111,7 +115,7 @@
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm mb-4" style="border-radius: 15px;">
                 <div class="card-header bg-white py-3 border-0">
-                    <h6 class="mb-0 fw-bold text-dark" id="tableTitle">Top Data</h6>
+                    <h6 class="mb-0 fw-bold text-dark" id="tableTitle">Breakdown Details</h6>
                 </div>
                 <div class="table-responsive" style="max-height: 300px;">
                     <table class="table table-hover align-middle mb-0 small">
@@ -142,74 +146,85 @@
 
     async function updateChart(type) {
         currentType = type;
+        const yearSelect = document.getElementById('yearSelect');
+        const selectedYear = yearSelect.value;
         
-        // Active Button UI logic
+        // Active Button UI Logic
         document.querySelectorAll('#analyticsToggle .btn').forEach(btn => btn.classList.remove('active'));
         document.getElementById(`btn-${type}`).classList.add('active');
 
-        const year = document.getElementById('yearSelect').value;
-        const res = await fetch(`/api/analytics?type=${type}&year=${year}`);
+        // Yearly ဆိုရင် dropdown ကို disable လုပ်ထားမယ် (ဘာလို့ဆို ရှိသမျှနှစ်အားလုံးပြမှာမို့လို့)
+        if (type === 'yearly') {
+            yearSelect.disabled = true;
+            yearSelect.style.opacity = '0.5';
+        } else {
+            yearSelect.disabled = false;
+            yearSelect.style.opacity = '1';
+        }
+
+        // Fetch Data from API
+        // Yearly ဖြစ်ရင် year parameter မထည့်တော့ဘူး (Backend က အားလုံးပြန်ပေးအောင်)
+        const url = type === 'yearly' ? `/api/analytics?type=${type}` : `/api/analytics?type=${type}&year=${selectedYear}`;
+        const res = await fetch(url);
         const data = await res.json();
 
         if (data.success) {
             const stats = data.stats;
-            const currentMonthName = months[new Date().getMonth()];
-            
-            // Labels & Titles logic
             let labels = [];
-            let tableHeader = "";
-            
-            if(type === 'daily') {
-                labels = stats.map(s => `${currentMonthName} ${s._id}`);
-                tableHeader = "Date";
-                document.getElementById('chartTitle').innerText = `Daily Revenue Trend (${currentMonthName})`;
-                document.getElementById('tableTitle').innerText = "Daily Breakdown";
-            } else if(type === 'monthly') {
-                labels = months;
-                tableHeader = "Month";
-                document.getElementById('chartTitle').innerText = "Monthly Revenue Trend";
-                document.getElementById('tableTitle').innerText = "Monthly Breakdown";
-            } else {
-                labels = stats.map(s => s._id);
-                tableHeader = "Year";
-                document.getElementById('chartTitle').innerText = "Yearly Revenue Trend";
-                document.getElementById('tableTitle').innerText = "Yearly Breakdown";
-            }
-
-            document.getElementById('periodColumnTitle').innerText = tableHeader;
-
-            const chartDataArray = type === 'monthly' ? new Array(12).fill(0) : new Array(stats.length).fill(0);
-            
+            let chartDataArray = [];
             let totalRev = 0;
             let totalCount = 0;
 
-            stats.forEach((s, idx) => {
-                const dataIndex = type === 'monthly' ? s._id - 1 : idx;
-                if(type === 'monthly') {
-                    chartDataArray[dataIndex] = s.totalRevenue;
-                } else {
-                    chartDataArray[idx] = s.totalRevenue;
-                    labels[idx] = type === 'daily' ? `${currentMonthName} ${s._id}` : s._id;
-                }
-                totalRev += s.totalRevenue;
-                totalCount += s.orderCount;
-            });
+            // 1. Logic for Labels & Chart Data
+            if (type === 'monthly') {
+                labels = months;
+                chartDataArray = new Array(12).fill(0);
+                stats.forEach(s => {
+                    chartDataArray[s._id - 1] = s.totalRevenue;
+                    totalRev += s.totalRevenue;
+                    totalCount += s.orderCount;
+                });
+                document.getElementById('chartTitle').innerText = `Monthly Revenue Trend (${selectedYear})`;
+                document.getElementById('periodColumnTitle').innerText = "Month";
+            } 
+            else if (type === 'daily') {
+                labels = stats.map(s => `Day ${s._id}`);
+                chartDataArray = stats.map(s => s.totalRevenue);
+                stats.forEach(s => {
+                    totalRev += s.totalRevenue;
+                    totalCount += s.orderCount;
+                });
+                document.getElementById('chartTitle').innerText = `Daily Revenue Trend (Current Month)`;
+                document.getElementById('periodColumnTitle').innerText = "Date";
+            } 
+            else if (type === 'yearly') {
+                // ရှိသမျှ နှစ်တွေအလိုက် Sort စီမယ်
+                stats.sort((a, b) => a._id - b._id);
+                labels = stats.map(s => s._id);
+                chartDataArray = stats.map(s => s.totalRevenue);
+                stats.forEach(s => {
+                    totalRev += s.totalRevenue;
+                    totalCount += s.orderCount;
+                });
+                document.getElementById('chartTitle').innerText = "Overall Yearly Revenue Trend";
+                document.getElementById('periodColumnTitle').innerText = "Year";
+            }
 
-            // Update Cards
+            // 2. Update Summary Cards
             document.getElementById('totalRevenue').innerText = totalRev.toLocaleString();
             document.getElementById('totalSales').innerText = totalCount.toLocaleString();
             document.getElementById('avgOrder').innerText = totalCount > 0 ? Math.round(totalRev / totalCount).toLocaleString() : 0;
 
-            // Update Table
+            // 3. Update Table Body
             const tableBody = document.getElementById('statsTableBody');
             tableBody.innerHTML = stats.map(s => `
                 <tr>
-                    <td>${type === 'monthly' ? months[s._id-1] : (type === 'daily' ? currentMonthName + ' ' + s._id : s._id)}</td>
+                    <td>${type === 'monthly' ? months[s._id-1] : (type === 'yearly' ? s._id : 'Day ' + s._id)}</td>
                     <td class="text-end fw-bold text-primary">${s.totalRevenue.toLocaleString()}</td>
                 </tr>
-            `).join('');
+            `).reverse().join(''); // table မှာ အသစ်ဆုံး (နှစ်/ရက်) ကို အပေါ်ကပြဖို့ reverse() သုံးထားတယ်
 
-            // Update Chart.js
+            // 4. Update Chart.js
             if (myChart) myChart.destroy();
             const ctx = document.getElementById('salesChart').getContext('2d');
             myChart = new Chart(ctx, {
@@ -217,40 +232,24 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Revenue (MMK)',
+                        label: 'Revenue',
                         data: chartDataArray,
                         borderColor: '#4e54c8',
                         backgroundColor: 'rgba(78, 84, 200, 0.1)',
                         fill: true,
                         tension: 0.4,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
+                        pointRadius: 5,
                         pointBackgroundColor: '#4e54c8'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { 
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return 'Revenue: ' + context.raw.toLocaleString() + ' MMK';
-                                }
-                            }
-                        }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: { 
                         y: { 
                             beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
-                                    if (value >= 1000) return (value / 1000).toFixed(0) + 'K';
-                                    return value;
-                                }
-                            }
+                            ticks: { callback: (val) => val.toLocaleString() }
                         } 
                     }
                 }
@@ -258,6 +257,7 @@
         }
     }
 
+    // Initial load
     window.onload = () => updateChart('monthly');
 </script>
 
