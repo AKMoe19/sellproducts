@@ -291,27 +291,48 @@ app.get('/reports', isAuth, isAdmin, async (req, res) => {
 app.get('/api/analytics', async (req, res) => {
     try {
         const { type, year } = req.query;
-        const currentYear = parseInt(year) || new Date().getFullYear();
+        
+        // မြန်မာစံတော်ချိန် (UTC+6:30) အတွက် လက်ရှိအချိန်ကို ညှိယူခြင်း
+        const now = new Date();
+        const mmTime = new Date(now.getTime() + (6.5 * 60 * 60 * 1000));
+        
+        const currentYear = parseInt(year) || mmTime.getUTCFullYear();
+        const currentMonth = (currentYear === mmTime.getUTCFullYear()) ? mmTime.getUTCMonth() : 11;
+
+        let matchStage = {};
+        let groupId = {};
+
+        if (type === 'daily') {
+            // ရွေးထားတဲ့ လရဲ့ ၁ ရက်နေ့ (00:00:00) ကနေ လကုန် (23:59:59) အထိ
+            const startOfMonth = new Date(Date.UTC(currentYear, currentMonth, 1, 0, 0, 0));
+            const endOfMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0, 23, 59, 59, 999));
+
+            matchStage = { createdAt: { $gte: startOfMonth, $lte: endOfMonth } };
+            groupId = { $dayOfMonth: { date: "$createdAt", timezone: "+06:30" } }; // Timezone ညှိပြီး Group ဖွဲ့ခြင်း
+        } else {
+            matchStage = {
+                createdAt: {
+                    $gte: new Date(Date.UTC(currentYear, 0, 1)),
+                    $lte: new Date(Date.UTC(currentYear, 11, 31, 23, 59, 59, 999))
+                }
+            };
+            groupId = type === 'monthly' ? 
+                      { $month: { date: "$createdAt", timezone: "+06:30" } } : 
+                      { $year: { date: "$createdAt", timezone: "+06:30" } };
+        }
 
         const stats = await Sale.aggregate([
-            {
-                $match: {
-                    createdAt: {
-                        $gte: new Date(`${currentYear}-01-01`),
-                        $lte: new Date(`${currentYear}-12-31T23:59:59.999Z`)
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: type === 'monthly' ? { $month: "$createdAt" } : { $year: "$createdAt" },
-                    totalRevenue: { $sum: "$totalAmount" },
-                    orderCount: { $sum: 1 }
-                }
+            { $match: matchStage },
+            { 
+                $group: { 
+                    _id: groupId, 
+                    totalRevenue: { $sum: "$totalAmount" }, 
+                    orderCount: { $sum: 1 } 
+                } 
             },
             { $sort: { "_id": 1 } }
         ]);
-
+        
         res.json({ success: true, stats });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -320,7 +341,6 @@ app.get('/api/analytics', async (req, res) => {
 
 // analytics.ejs ကို render လုပ်ပေးမယ့် route
 app.get('/analytics', (req, res) => {
-    // login စစ်ဆေးတဲ့ logic ထည့်နိုင်သည်
     res.render('analytics', { user: req.session.user || {} });
 });
 
