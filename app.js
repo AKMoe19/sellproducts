@@ -241,8 +241,14 @@ app.get('/api/search-voucher', async (req, res) => {
 });
 
 // --- Reports Section (with Top Sellers) ---
-app.get('/reports', isAuth, isAdmin, async (req, res) => {
+app.get('/reports', isAuth, async (req, res) => { // isAdmin ကို ဖယ်လိုက်ပါ သို့မဟုတ် Role စစ်တဲ့ logic ပြောင်းပါ
     try {
+        // --- Role Permission Check ---
+        // Admin ရော Cashier ရော ပေးဝင်မယ်၊ တခြား role ရှိရင်တော့ ပိတ်မယ်
+        if (req.session.user.role !== 'admin' && req.session.user.role !== 'cashier') {
+            return res.status(403).send("ဒီစာမျက်နှာကို ကြည့်ရှုခွင့်မရှိပါ");
+        }
+
         let queryDate = req.query.date ? new Date(req.query.date) : new Date();
         const startOfDay = new Date(queryDate.setHours(0, 0, 0, 0));
         const endOfDay = new Date(queryDate.setHours(23, 59, 59, 999));
@@ -251,17 +257,15 @@ app.get('/reports', isAuth, isAdmin, async (req, res) => {
             createdAt: { $gte: startOfDay, $lte: endOfDay }
         }).sort({ createdAt: -1 });
 
-        // --- Payment Method အလိုက် Stats တွက်ချက်ခြင်း ---
+        // --- Payment Method အလိုက် Stats ---
         const paymentStats = { Cash: 0, Kpay: 0, WavePay: 0, AYAPay: 0, CBPay: 0, MMQR: 0};
         const sellerStats = {};
 
         sales.forEach(sale => {
-            // Seller Stats
             const name = sale.sellerName || 'System';
             sellerStats[name] = (sellerStats[name] || 0) + sale.totalAmount;
 
-            // Payment Stats
-            const method = sale.paymentMethod || 'Cash'; // Default Cash
+            const method = sale.paymentMethod || 'Cash';
             if (paymentStats.hasOwnProperty(method)) {
                 paymentStats[method] += sale.totalAmount;
             } else {
@@ -276,7 +280,8 @@ app.get('/reports', isAuth, isAdmin, async (req, res) => {
         res.render('reports', {
             sales,
             topSellers,
-            paymentStats, // ဒါကိုပါ ထည့်ပေးလိုက်ပါ
+            paymentStats,
+            user: req.session.user, // EJS ထဲမှာ role စစ်လို့ရအောင် user object ကိုပါ ပို့ပေးပါ
             dailySummary: {
                 totalRevenue: sales.reduce((sum, s) => sum + s.totalAmount, 0),
                 totalOrders: sales.length
@@ -284,6 +289,7 @@ app.get('/reports', isAuth, isAdmin, async (req, res) => {
             selectedDate: req.query.date || new Date().toISOString().split('T')[0]
         });
     } catch (err) {
+        console.error(err);
         res.status(500).send("Reports Error");
     }
 });
@@ -292,33 +298,37 @@ app.get('/api/analytics', async (req, res) => {
     try {
         const { type, year } = req.query;
         
-        // မြန်မာစံတော်ချိန် (UTC+6:30) အတွက် လက်ရှိအချိန်ကို ညှိယူခြင်း
+        // မြန်မာစံတော်ချိန် (UTC+6:30) အတွက် လက်ရှိအချိန်ယူခြင်း
         const now = new Date();
         const mmTime = new Date(now.getTime() + (6.5 * 60 * 60 * 1000));
         
         const currentYear = parseInt(year) || mmTime.getUTCFullYear();
-        const currentMonth = (currentYear === mmTime.getUTCFullYear()) ? mmTime.getUTCMonth() : 11;
+        const currentMonth = mmTime.getUTCMonth(); // လက်ရှိလ (0-11)
 
         let matchStage = {};
         let groupId = {};
 
         if (type === 'daily') {
-            // ရွေးထားတဲ့ လရဲ့ ၁ ရက်နေ့ (00:00:00) ကနေ လကုန် (23:59:59) အထိ
-            const startOfMonth = new Date(Date.UTC(currentYear, currentMonth, 1, 0, 0, 0));
+            // ရွေးထားတဲ့ နှစ်၊ လက်ရှိလ ရဲ့ ၁ ရက်နေ့ ကနေ လကုန်အထိ
+            const startOfMonth = new Date(Date.UTC(currentYear, currentMonth, 1));
             const endOfMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0, 23, 59, 59, 999));
 
             matchStage = { createdAt: { $gte: startOfMonth, $lte: endOfMonth } };
-            groupId = { $dayOfMonth: { date: "$createdAt", timezone: "+06:30" } }; // Timezone ညှိပြီး Group ဖွဲ့ခြင်း
-        } else {
+            groupId = { $dayOfMonth: { date: "$createdAt", timezone: "+06:30" } };
+        } 
+        else if (type === 'monthly') {
+            // ရွေးထားတဲ့ နှစ် (Selected Year) တစ်နှစ်စာအတွက်ပဲ Match လုပ်မယ်
             matchStage = {
                 createdAt: {
                     $gte: new Date(Date.UTC(currentYear, 0, 1)),
                     $lte: new Date(Date.UTC(currentYear, 11, 31, 23, 59, 59, 999))
                 }
             };
-            groupId = type === 'monthly' ? 
-                      { $month: { date: "$createdAt", timezone: "+06:30" } } : 
-                      { $year: { date: "$createdAt", timezone: "+06:30" } };
+            groupId = { $month: { date: "$createdAt", timezone: "+06:30" } };
+        } 
+        else if (type === 'yearly') {
+            matchStage = {}; 
+            groupId = { $year: { date: "$createdAt", timezone: "+06:30" } };
         }
 
         const stats = await Sale.aggregate([
@@ -330,7 +340,7 @@ app.get('/api/analytics', async (req, res) => {
                     orderCount: { $sum: 1 } 
                 } 
             },
-            { $sort: { "_id": 1 } }
+            { $sort: { "_id": 1 } } // နှစ်တွေကို အစဉ်လိုက်စီမယ်
         ]);
         
         res.json({ success: true, stats });
