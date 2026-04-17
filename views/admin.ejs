@@ -4,15 +4,16 @@
     <div class="container-fluid">
         <span class="navbar-brand fw-bold"><i class="fas fa-user-shield me-2"></i> Admin Dashboard</span>
         <div class="d-flex align-items-center">
-            <a href="/analytics" class="btn btn-outline-info btn-sm me-3"><i class="fas fa-chart-line me-1"></i> Analytics</a>
-            <a href="/" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i> Back to POS</a>
+            <a href="/" class="btn btn-outline-light btn-sm me-2"><i class="fas fa-home me-1"></i> Home</a>
+            <a href="/analytics" class="btn btn-outline-info btn-sm me-2"><i class="fas fa-chart-line me-1"></i> Analytics</a>
+            <a href="/logout" class="btn btn-outline-danger btn-sm my-1"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </div>
     </div>
 </nav>
 
 <div class="container-fluid px-4 pb-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h4 class="fw-bold mb-0 text-dark">Welcome to Management Center</h4>
+        <h4 class="fw-bold mb-0 text-dark">Management Center</h4>
         <button type="button" class="btn btn-primary shadow-sm px-4" data-bs-toggle="modal" data-bs-target="#addProductModal" onclick="resetProductForm()">
             <i class="fas fa-plus-circle me-1"></i> Add New Product
         </button>
@@ -56,19 +57,25 @@
                 </div>
             </div>
         </div>
-
+        
         <div class="col-lg-8">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white py-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                     <span class="fw-bold text-primary"><i class="fas fa-boxes me-2"></i> Product Inventory</span>
+                    <div class="input-group" style="max-width: 250px;">
+                        <span class="input-group-text bg-light border-0"><i class="fas fa-search text-muted"></i></span>
+                        <input type="text" id="productSearch" class="form-control bg-light border-0" onkeyup="searchProduct()" placeholder="Search products...">
+                    </div>
                 </div>
+
                 <div class="card-body p-0">
                     <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
-                        <table class="table table-hover align-middle mb-0">
+                        <table class="table table-hover align-middle mb-0" id="productTable">
                             <thead class="table-light sticky-top">
                                 <tr class="small text-uppercase text-muted">
-                                    <th>Name</th>
-                                    <th>Price</th>
+                                    <th>Product Details</th>
+                                    <th class="text-danger">Cost (ဝယ်ဈေး)</th>
+                                    <th class="text-success">Price (ရောင်းဈေး)</th>
                                     <th>Stock</th>
                                     <th class="text-center">Actions</th>
                                 </tr>
@@ -77,19 +84,13 @@
                                 <% products.forEach(p => { %>
                                 <tr>
                                     <td class="fw-bold text-dark">
-                                        <!-- <img src="<%= p.image %>" 
-                                             onerror="this.src='/images/default-product.png'" 
-                                             class="rounded me-2 shadow-sm border" 
-                                             width="35" height="35" 
-                                             style="object-fit: cover;"> -->
-                                        <img src="<%= p.image %>" 
-                                            onerror="this.src='/images/default-product.png'" 
-                                            class="rounded border shadow-sm" 
-                                            width="40" height="40" 
-                                            style="object-fit: cover;">
-                                        <%= p.name %>
+                                        <div class="d-flex align-items-center">
+                                            <img src="<%= p.image %>" onerror="this.src='/images/default-product.png'" class="rounded border shadow-sm me-3" width="40" height="40" style="object-fit: cover;">
+                                            <span class="product-name"><%= p.name %></span>
+                                        </div>
                                     </td>
-                                    <td><%= p.price.toLocaleString() %> <span class="small text-muted">MMK</span></td>
+                                    <td class="fw-bold text-danger"><%= p.costPrice ? p.costPrice.toLocaleString() : 0 %> <small>MMK</small></td>
+                                    <td class="fw-bold text-success"><%= p.price.toLocaleString() %> <small>MMK</small></td>
                                     <td>
                                         <span class="badge <%= p.stock < 10 ? 'bg-danger' : 'bg-success' %> rounded-pill px-3">
                                             <%= p.stock %>
@@ -97,7 +98,7 @@
                                     </td>
                                     <td class="text-center">
                                         <button class="btn btn-sm btn-outline-warning border-0" 
-                                                onclick="editProduct('<%= p._id %>', '<%= p.name %>', <%= p.price %>, <%= p.stock %>, '<%= p.image %>')">
+                                                onclick="editProduct('<%= p._id %>', '<%= p.name %>', <%= p.price %>, <%= p.stock %>, '<%= p.image %>', <%= p.costPrice || 0 %>)">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <a href="/admin/delete-product/<%= p._id %>" class="btn btn-sm btn-outline-danger border-0" onclick="return confirm('Delete item?')">
@@ -123,24 +124,21 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
-            <!-- Add New Product Form -->
             <form id="product-form" action="/admin/add-product" method="POST" enctype="multipart/form-data">
                 <div class="modal-body p-4">
                     <input type="hidden" name="id" id="prod-id">
                     
-                    <div class="mb-3 text-center">
+                    <div class="mb-4 text-center">
                         <div class="mb-2">
-                            <img id="current-prod-image" src="/images/default-product.png" 
-                                 class="rounded shadow-sm border" width="80" height="80" style="object-fit: cover;">
+                            <img id="current-prod-image" src="/images/default-product.png" class="rounded shadow-sm border" width="100" height="100" style="object-fit: cover;">
                         </div>
                         <label class="form-label small fw-bold text-muted d-block text-start">Product Image</label>
-                        <input type="file" name="image" id="prod-image" class="form-control" accept="image/*" onchange="previewImage(this)">
-                        <small class="text-muted mt-1 d-block text-start"><i class="fas fa-info-circle me-1"></i> ပုံအသစ်တင်ရန် (မတင်ပါက ပုံဟောင်းအတိုင်း ရှိနေမည်)</small>
+                        <input type="file" name="image" id="prod-image" class="form-control shadow-sm" accept="image/*" onchange="previewImage(this)">
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted">Product Name</label>
-                        <div class="input-group">
+                        <div class="input-group shadow-sm">
                             <span class="input-group-text bg-light"><i class="fas fa-tag"></i></span>
                             <input type="text" name="name" id="prod-name" class="form-control" required placeholder="Enter product name">
                         </div>
@@ -148,11 +146,19 @@
                     
                     <div class="row">
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold text-muted">Price (MMK)</label>
-                            <input type="number" name="price" id="prod-price" class="form-control" required placeholder="0.00">
+                            <label class="form-label small fw-bold text-danger">Cost Price (ဝယ်ဈေး)</label>
+                            <input type="number" name="costPrice" id="prod-costPrice" class="form-control shadow-sm" required placeholder="0">
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold text-muted">Stock Quantity</label>
+                            <label class="form-label small fw-bold text-success">Sale Price (ရောင်းဈေး)</label>
+                            <input type="number" name="price" id="prod-price" class="form-control shadow-sm" required placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">Current Stock</label>
+                        <div class="input-group shadow-sm">
+                            <span class="input-group-text bg-light"><i class="fas fa-cubes"></i></span>
                             <input type="number" name="stock" id="prod-stock" class="form-control" required placeholder="0">
                         </div>
                     </div>
@@ -162,7 +168,6 @@
                     <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">Save Product</button>
                 </div>
             </form>
-
         </div>
     </div>
 </div>
@@ -204,17 +209,38 @@
 </div>
 
 <script>
-    // ပုံပါဝင်သော Edit Function
-    function editProduct(id, name, price, stock, image) {
+    // --- Product Search Function ---
+    function searchProduct() {
+        const input = document.getElementById('productSearch');
+        const filter = input.value.toUpperCase();
+        const table = document.getElementById('productTable');
+        const tr = table.getElementsByTagName('tr');
+
+        for (let i = 1; i < tr.length; i++) {
+            // Product Details column ထဲက name ကို ရှာမယ်
+            const td = tr[i].getElementsByClassName('product-name')[0];
+            if (td) {
+                const txtValue = td.textContent || td.innerText;
+                if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                    tr[i].style.display = "";
+                } else {
+                    tr[i].style.display = "none";
+                }
+            }
+        }
+    }
+
+    // Edit Product Function
+    function editProduct(id, name, price, stock, image, costPrice) {
         document.getElementById('productModalTitle').innerHTML = '<i class="fas fa-edit me-2"></i> Edit Product';
         document.getElementById('product-form').action = "/admin/edit-product";
         document.getElementById('prod-id').value = id;
         document.getElementById('prod-name').value = name;
         document.getElementById('prod-price').value = price;
         document.getElementById('prod-stock').value = stock;
+        document.getElementById('prod-costPrice').value = costPrice;
 
         const currentImg = document.getElementById('current-prod-image');
-        // ပုံရှိမရှိစစ်ဆေးပြီး modal preview မှာပြမယ်
         if (image && image !== 'undefined' && image !== '') {
             currentImg.src = image;
         } else {
@@ -224,16 +250,17 @@
         new bootstrap.Modal(document.getElementById('addProductModal')).show();
     }
 
-    // Add New နှိပ်တဲ့အခါ Form ကို အသစ်ပြန်ဖြစ်စေဖို့
+    // Reset Form for New Entry
     function resetProductForm() {
         document.getElementById('productModalTitle').innerHTML = '<i class="fas fa-plus-circle me-2"></i> Add New Product';
         document.getElementById('product-form').action = "/admin/add-product";
         document.getElementById('product-form').reset();
         document.getElementById('prod-id').value = '';
+        document.getElementById('prod-costPrice').value = '';
         document.getElementById('current-prod-image').src = '/images/default-product.png';
     }
 
-    // ပုံအသစ်ရွေးလိုက်ရင် ချက်ချင်းပြပေးမယ့် function
+    // Live Image Preview
     function previewImage(input) {
         if (input.files && input.files[0]) {
             var reader = new FileReader();
