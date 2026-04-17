@@ -105,10 +105,38 @@ app.get('/', isAuth, async (req, res) => {
 });
 
 // --- Admin Section ---
+// app.get('/admin', isAuth, isAdmin, async (req, res) => {
+//     const products = await Product.find().sort({ createdAt: -1 });
+//     const users = await User.find(); 
+//     res.render('admin', { products, users });
+// });
+
+// admin.ejs ကို ခေါ်တဲ့နေရာ (Admin Route)
 app.get('/admin', isAuth, isAdmin, async (req, res) => {
-    const products = await Product.find().sort({ createdAt: -1 });
-    const users = await User.find(); 
-    res.render('admin', { products, users });
+    try {
+        // Database ကနေ Product နဲ့ User အကုန်လုံးကို ခေါ်မယ်
+        const products = await Product.find({}).sort({ createdAt: -1 });
+        const users = await User.find({});
+
+        // Total Inventory Value ကို တွက်မယ် (Cost Price * Stock)
+        // ဝယ်ဈေးမရှိရင် ၀ လို့ သတ်မှတ်မယ်
+        const totalValue = products.reduce((acc, p) => {
+            const cost = p.costPrice || 0;
+            const qty = p.stock || 0;
+            return acc + (cost * qty);
+        }, 0);
+
+        // admin.ejs ဆီကို data တွေ ပို့ပေးမယ်
+        res.render('admin', {
+            products: products,
+            users: users,
+            totalValue: totalValue,
+            title: "Admin Dashboard"
+        });
+    } catch (err) {
+        console.error("Admin Page Error:", err);
+        res.status(500).send("Server Error: Admin page loading failed.");
+    }
 });
 
 // --- Add Product Route ---
