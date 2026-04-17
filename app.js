@@ -114,12 +114,13 @@ app.get('/admin', isAuth, isAdmin, async (req, res) => {
 // --- Add Product Route ---
 app.post('/admin/add-product', isAuth, isAdmin, upload.single('image'), async (req, res) => {
     try {
-        const { name, price, stock } = req.body;
+        const { name, price, stock, costPrice } = req.body;
         // ရှေ့မှာ / ပါမှ public folder ထဲကနေ တိုက်ရိုက်ရှာမှာပါ
         const imageUrl = req.file ? '/uploads/' + req.file.filename : '/images/default-product.png';
         
         await new Product({ 
-            name, 
+            name,
+            costPrice: Number(costPrice),
             price: Number(price), 
             stock: Number(stock), 
             image: imageUrl 
@@ -134,10 +135,15 @@ app.post('/admin/add-product', isAuth, isAdmin, upload.single('image'), async (r
 // --- Edit Product Route ---
 app.post('/admin/edit-product', isAuth, isAdmin, upload.single('image'), async (req, res) => {
     try {
-        const { id, name, price, stock } = req.body;
+        const { id, name, price, stock, costPrice } = req.body;
         const product = await Product.findById(id);
 
-        let updateData = { name, price: Number(price), stock: Number(stock) };
+        let updateData = { 
+            name, 
+            costPrice: Number(costPrice),
+            price: Number(price), 
+            stock: Number(stock) 
+        };
 
         if (req.file) {
             // ၁။ ပုံအသစ် တင်လိုက်ပြီဆိုရင် အရင်ရှိခဲ့တဲ့ ပုံအဟောင်းကို ဖျက်မယ်
@@ -202,22 +208,32 @@ app.post('/checkout', isAuth, async (req, res) => {
     try {
         const { items, totalAmount, paymentMethod } = req.body;
 
+        // ၁။ Voucher ID ကို Server မှာ generate လုပ်ခြင်း (မှန်ကန်ပါသည်)
+        const voucherId = 'V-' + Math.floor(1000000 + Math.random() * 9000000);
+
         const newSale = new Sale({
+            voucherId,
             items,
-            totalAmount,
-            paymentMethod: paymentMethod || 'Cash', // ပို့မလာခဲ့ရင် Default Cash လို့ သတ်မှတ်မယ်
-            sellerName: req.user.username,
+            totalAmount: Number(totalAmount), // ၂။ Number format သို့ ပြောင်းပါ
+            paymentMethod: paymentMethod || 'Cash',
+            // ၃။ သင့် system ၏ session logic အတိုင်း seller name ကို ယူပါ
+            sellerName: req.session.user ? req.session.user.name : 'System',
             createdAt: new Date()
         });
 
-        await newSale.save();
+        const savedSale = await newSale.save();
         
-        // Socket.io နဲ့ Reports စာမျက်နှာကို Data လှမ်းပို့တာ မမေ့ပါနဲ့
-        io.emit('reports-update', { newSale });
+        // Real-time update အတွက် emit လုပ်ခြင်း
+        if (typeof io !== 'undefined') {
+            io.emit('reports-update', { newSale: savedSale });
+        }
 
-        res.json({ success: true });
+        // ၄။ Backend က သိမ်းလိုက်တဲ့ ID အစစ်ကို Frontend ဆီ ပြန်ပို့ခြင်း (မှန်ကန်ပါသည်)
+        res.json({ success: true, sale: savedSale }); 
+
     } catch (err) {
-        res.status(500).json({ error: "Checkout failed" });
+        console.error("Checkout Error:", err);
+        res.status(500).json({ success: false, error: "Checkout failed" });
     }
 });
 
@@ -241,10 +257,9 @@ app.get('/api/search-voucher', async (req, res) => {
 });
 
 // --- Reports Section (with Top Sellers) ---
-app.get('/reports', isAuth, async (req, res) => { // isAdmin ကို ဖယ်လိုက်ပါ သို့မဟုတ် Role စစ်တဲ့ logic ပြောင်းပါ
+app.get('/reports', isAuth, async (req, res) => {
     try {
         // --- Role Permission Check ---
-        // Admin ရော Cashier ရော ပေးဝင်မယ်၊ တခြား role ရှိရင်တော့ ပိတ်မယ်
         if (req.session.user.role !== 'admin' && req.session.user.role !== 'cashier') {
             return res.status(403).send("ဒီစာမျက်နှာကို ကြည့်ရှုခွင့်မရှိပါ");
         }
@@ -349,8 +364,8 @@ app.get('/api/analytics', async (req, res) => {
     }
 });
 
-// analytics.ejs ကို render လုပ်ပေးမယ့် route
 app.get('/analytics', (req, res) => {
+    // login စစ်ဆေးတဲ့ logic ထည့်နိုင်သည်
     res.render('analytics', { user: req.session.user || {} });
 });
 
@@ -365,7 +380,7 @@ io.on('connection', (socket) => {
             // ၁။ Voucher ID အသစ်ထုတ်ခြင်း (ဥပမာ- V-1710123456)
             const voucherId = 'V-' + Date.now().toString().slice(-8);
 
-            // ၂။ စုစုပေါင်း金額ကို တွက်ချက်ခြင်း (Server-side calculation က ပိုစိတ်ချရပါတယ်)
+            // ၂။ စုစုပေါင်းကို တွက်ချက်ခြင်း (Server-side calculation က ပိုစိတ်ချရပါတယ်)
             let subtotal = 0;
             const saleItems = [];
 
